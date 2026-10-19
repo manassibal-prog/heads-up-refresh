@@ -5,6 +5,10 @@ on:
     - cron: "0,30 6-15 * * *"   # 11:30-21:00 IST
   workflow_dispatch:            # manual "Run workflow" button for testing
     inputs:
+      trial:
+        description: "Trial: today's data into temp tabs (type a start date e.g. 2026-10-19), leave empty for real run"
+        type: string
+        default: ""
       check:
         description: "Only test Google Sheets access (writes nothing)"
         type: boolean
@@ -30,3 +34,4 @@ jobs:
           MB_KEY: ${{ secrets.MB_KEY }}
           GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
           ENFORCE_HOURS: "1"
+          TRIAL: ${{ inputs.trial }}

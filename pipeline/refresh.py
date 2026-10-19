@@ -44,6 +44,11 @@ def log(msg):
 
 def load_cfg():
     cfg = json.load(open(HERE / "config.json", encoding="utf-8"))
+    if os.environ.get("TRIAL"):  # trial: today's data into temp tabs of the register sheet
+        rid = cfg["register"]["sheet_id"]
+        cfg["start_date"] = os.environ["TRIAL"]
+        cfg["caller"] = {"sheet_id": rid, "tab": "tmp_caller"}
+        cfg["register"] = {"sheet_id": rid, "tab": "tmp_reg"}
     if os.environ.get("MB_KEY"):  # cloud: keys come from secrets as env vars
         cfg["mb_url"], cfg["mb_key"] = os.environ["MB_URL"].rstrip("/"), os.environ["MB_KEY"]
     else:
