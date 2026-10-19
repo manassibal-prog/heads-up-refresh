@@ -181,6 +181,10 @@ def main():
     if os.environ.get("ENFORCE_HOURS") and not (11 <= h <= 21):
         log("outside 11:00-21:00 IST, skipping")
         return
+    if "--check" in sys.argv:  # connectivity test: opens both tabs, writes nothing
+        for which in ("caller", "register"):
+            log(f"check ok: {which} tab has {len(open_tab(cfg, which).read_all())} rows")
+        return
     now = f"{datetime.now(IST):%Y-%m-%d %H:%M}"
     rows = fetch(cfg)
     if not rows:

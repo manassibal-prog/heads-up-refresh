@@ -3,7 +3,12 @@ on:
   schedule:
     - cron: "30 5 * * *"        # 11:00 IST
     - cron: "0,30 6-15 * * *"   # 11:30-21:00 IST
-  workflow_dispatch: {}         # manual "Run workflow" button for testing
+  workflow_dispatch:            # manual "Run workflow" button for testing
+    inputs:
+      check:
+        description: "Only test Google Sheets access (writes nothing)"
+        type: boolean
+        default: false
 concurrency:
   group: heads-up-refresh
   cancel-in-progress: false
@@ -19,7 +24,7 @@ jobs:
           cache: pip
           cache-dependency-path: pipeline/requirements.txt
       - run: pip install -r pipeline/requirements.txt
-      - run: python pipeline/refresh.py
+      - run: python pipeline/refresh.py ${{ inputs.check && '--check' || '' }}
         env:
           MB_URL: ${{ secrets.MB_URL }}
           MB_KEY: ${{ secrets.MB_KEY }}
