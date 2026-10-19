@@ -1,0 +1,7 @@
+{
+ "backend": "gsheets",
+ "start_date": "2026-10-20",
+ "service_account_file": "pipeline/google_service_account.json",
+ "caller":   {"sheet_id": "1BkM2RdVOJ9ZGTXMNbFvRsuc1SnnZligtJy1S8_k2dqQ", "tab": "Call log"},
+ "register": {"sheet_id": "1EJrWWorTV66Rw8Ttx6ES_vYPrTn6W8m7blKmyXLwU5c", "tab": "Register"}
+}

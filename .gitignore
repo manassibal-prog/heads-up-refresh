@@ -1,0 +1,5 @@
+metabase.env
+pipeline/google_service_account.json
+pipeline/*.json.json
+pipeline/refresh.log
+*.xlsx
