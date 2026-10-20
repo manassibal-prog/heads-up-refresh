@@ -1,8 +1,9 @@
 name: heads-up-refresh
 on:
   schedule:
-    - cron: "30 5 * * *"        # 11:00 IST
-    - cron: "0,30 6-15 * * *"   # 11:30-21:00 IST
+    # off-peak minutes (GitHub drops/delays :00 and :30 runs); every 15 min, 10:37-21:52 IST.
+    # refresh.py skips anything outside 11:00-21:59 IST and is safe to run repeatedly.
+    - cron: "7,22,37,52 5-15 * * *"
   workflow_dispatch:            # manual "Run workflow" button for testing
     inputs:
       trial:
