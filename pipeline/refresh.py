@@ -37,7 +37,8 @@ REG_LIVE_COL = 12  # L: status_now, status_updated_at
 
 def log(msg):
     line = f"{datetime.now(IST):%Y-%m-%d %H:%M:%S} {msg}"
-    print(line)
+    if sys.stdout:  # pythonw (no console) has no stdout
+        print(line)
     with open(HERE / "refresh.log", "a", encoding="utf-8") as f:
         f.write(line + "\n")
 
@@ -195,11 +196,16 @@ def sync(tab, fresh, fixed_vals, live_vals, live_col, live_hdr):
         block = [live_vals(byid[t], o) if t in byid else o for t, o in zip(ids, old)]
         tab.update_block(2, live_col, block)
 
-    # 1b) fill a blank kapture_ticket_id (col B) on existing rows once it becomes known
+    # 1b) self-heal: fill any blank fixed cell (e.g. kapture id learned later, or a half-written row)
     for t, i in pos.items():
-        cur = rows[i - 1][1] if len(rows[i - 1]) > 1 else ""
-        if not cur.strip() and t in byid and byid[t]["KAPTURE_TICKET_ID"]:
-            tab.update_block(i, 2, [[byid[t]["KAPTURE_TICKET_ID"]]])
+        if t not in byid:
+            continue
+        want = [str(v) for v in fixed_vals(byid[t])]
+        row = rows[i - 1]
+        for j, w in enumerate(want):
+            cur = row[j] if len(row) > j else ""
+            if not cur.strip() and w.strip():
+                tab.update_block(i, j + 1, [[w]])
 
     # 2) append brand-new tickets at the bottom
     new = [r for r in fresh if r["TICKET_ID"] not in pos]

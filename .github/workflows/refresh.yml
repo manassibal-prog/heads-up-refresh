@@ -1,9 +1,7 @@
 name: heads-up-refresh
 on:
-  schedule:
-    # off-peak minutes (GitHub drops/delays :00 and :30 runs); every 15 min, 10:37-21:52 IST.
-    # refresh.py skips anything outside 11:00-21:59 IST and is safe to run repeatedly.
-    - cron: "7,22,37,52 5-15 * * *"
+  # Schedule removed: the live runner is the Google Apps Script project (apps_script/). This workflow stays
+  # as a manual backup only (Actions > Run workflow).
   workflow_dispatch:            # manual "Run workflow" button for testing
     inputs:
       trial:
