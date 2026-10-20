@@ -91,8 +91,32 @@ def fetch(cfg):
         r["KAPTURE_TICKET_ID"] = "" if r["KAPTURE_TICKET_ID"] is None else str(r["KAPTURE_TICKET_ID"])
         for k in ("CSP_NAME", "ISSUE"):
             r[k] = r[k] or ""
+    fill_missing_kapture(cfg, rows)
     rows.sort(key=lambda r: (r["FLAGGED_AT_IST"], r["TICKET_ID"]))
     return rows
+
+
+def fill_missing_kapture(cfg, rows):
+    """service_ticket_model lags upstream: where its kapture_ticket_id is blank, look it up in
+    the raw tickets table. Adit's query is not touched; failures here are non-fatal."""
+    miss = [r for r in rows if not r["KAPTURE_TICKET_ID"]]
+    if not miss:
+        return
+    ids = ",".join(f"'{r['TICKET_ID']}'" for r in miss if r["TICKET_ID"].isdigit())
+    sql = ("select ticket_id::text, max(kapture_ticket_id)::text from prod_db.dynamodb_read.tickets "
+           f"where ticket_id::text in ({ids}) and kapture_ticket_id is not null group by 1")
+    try:
+        body = json.dumps({"database": 113, "type": "native", "native": {"query": sql}}).encode()
+        req = urllib.request.Request(cfg["mb_url"] + "/api/dataset", body,
+                                     {"x-api-key": cfg["mb_key"], "Content-Type": "application/json"})
+        d = json.load(urllib.request.urlopen(req, timeout=120))
+        found = {a: b for a, b in d["data"]["rows"]}
+    except Exception as e:
+        log(f"kapture lookup failed (non-fatal): {e}")
+        return
+    for r in miss:
+        r["KAPTURE_TICKET_ID"] = found.get(r["TICKET_ID"], "")
+    log(f"kapture id missing for {len(miss)} tickets, filled {sum(1 for r in miss if r['KAPTURE_TICKET_ID'])} from upstream")
 
 
 # ---------- storage backends: read_all() and update_block() only ----------
@@ -170,6 +194,12 @@ def sync(tab, fresh, fixed_vals, live_vals, live_col, live_hdr):
             old.append([(row[live_col - 1 + k] if len(row) > live_col - 1 + k else "") for k in range(len(live_hdr))])
         block = [live_vals(byid[t], o) if t in byid else o for t, o in zip(ids, old)]
         tab.update_block(2, live_col, block)
+
+    # 1b) fill a blank kapture_ticket_id (col B) on existing rows once it becomes known
+    for t, i in pos.items():
+        cur = rows[i - 1][1] if len(rows[i - 1]) > 1 else ""
+        if not cur.strip() and t in byid and byid[t]["KAPTURE_TICKET_ID"]:
+            tab.update_block(i, 2, [[byid[t]["KAPTURE_TICKET_ID"]]])
 
     # 2) append brand-new tickets at the bottom
     new = [r for r in fresh if r["TICKET_ID"] not in pos]
