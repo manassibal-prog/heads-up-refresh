@@ -17,12 +17,13 @@ const CFG = {
   REGISTER: { id: '1EJrWWorTV66Rw8Ttx6ES_vYPrTn6W8m7blKmyXLwU5c', tab: 'Register' },
   LOG_TAB: 'Run log',
   TZ: 'Asia/Kolkata',
-  HOURS: [11, 21],   // run only 11:00-21:59 IST
+  WINDOW_MIN: [10 * 60, 19 * 60 + 30],   // act only 10:00-19:30 IST (minutes since midnight)
 };
 const MODEL = '9f70571979';
 const CALLER_FIXED = ['TICKET_ID', 'KAPTURE_TICKET_ID', 'CSP_ID', 'CSP_NAME', 'FLAGGED_AT_IST', 'SCORE_BAND'];
 const CALLER_LIVE_HDR = ['status_now', 'issue', 'last_refreshed'];
 const CALLER_LIVE_COL = 17; // Q
+const CALLER_ADDED_COL = 20; // T: added_at, written once when the ticket is first added to the sheet
 const REG_HDR = ['ticket_id', 'kapture_ticket_id', 'csp_id', 'csp_name', 'arm', 'score_band', 'delay_score',
   'model', 'created_at_ist', 'flagged_at_ist', 'enrolled_at', 'status_now', 'status_updated_at', 'issue'];
 const REG_LIVE_COL = 12; // L
@@ -246,13 +247,13 @@ function dryRun() {
 function installTrigger() {
   ScriptApp.getProjectTriggers().forEach(t => { if (t.getHandlerFunction() === 'refresh') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('refresh').timeBased().everyMinutes(30).create();
-  Logger.log('Trigger installed: refresh() every 30 minutes (it only acts 11:00-21:59 IST).');
+  Logger.log('Trigger installed: refresh() every 30 minutes (it only acts 10:00-19:30 IST).');
 }
 
 // ---------- main ----------
 function run_() {
-  const h = Number(Utilities.formatDate(new Date(), CFG.TZ, 'H'));
-  if (h < CFG.HOURS[0] || h > CFG.HOURS[1]) return;
+  const mins = Number(Utilities.formatDate(new Date(), CFG.TZ, 'H')) * 60 + Number(Utilities.formatDate(new Date(), CFG.TZ, 'm'));
+  if (mins < CFG.WINDOW_MIN[0] || mins > CFG.WINDOW_MIN[1]) return;
   const now = Utilities.formatDate(new Date(), CFG.TZ, 'yyyy-MM-dd HH:mm');
   const rows = fetchRows_();
   if (!rows.length) {
@@ -263,7 +264,8 @@ function run_() {
   const calls = rows.filter(r => r.ARM === 'CALL');
   const n1 = sync_(openTab_(CFG.CALLER), calls,
     r => CALLER_FIXED.map(k => r[k]),
-    (r, old) => [r.STATUS_NOW, r.ISSUE, now], CALLER_LIVE_COL, CALLER_LIVE_HDR);
+    (r, old) => [r.STATUS_NOW, r.ISSUE, now], CALLER_LIVE_COL, CALLER_LIVE_HDR,
+    { col: CALLER_ADDED_COL, hdr: 'added_at', val: now });
   const regFixed = r => [r.TICKET_ID, r.KAPTURE_TICKET_ID, r.CSP_ID, r.CSP_NAME, r.ARM, r.SCORE_BAND,
     String(r.DELAY_SCORE), MODEL, r.CREATED_AT_IST, r.FLAGGED_AT_IST, now];
   const regLive = (r, old) => {
@@ -362,18 +364,22 @@ function updateBlock_(sh, row, col, values) {
   rng.setValues(values.map(r => r.map(v => v == null ? '' : String(v))));
 }
 
+/** ids pasted by hand may carry commas/spaces ('1,792,727,978,487,000'): compare digits only */
+function nid_(v) { return String(v == null ? '' : v).replace(/\D/g, ''); }
+
 function nextRow_(rows) {
   let n = 1;
   rows.forEach((r, i) => { if (r && String(r[0]).trim()) n = i + 1; });
   return n + 1;
 }
 
-function sync_(sh, fresh, fixedVals, liveVals, liveCol, liveHdr) {
+function sync_(sh, fresh, fixedVals, liveVals, liveCol, liveHdr, extra) {   // extra = {col, hdr, val}: write-once column
   const rows = readAll_(sh);
   if (!rows.length || !String(rows[0][0]).trim()) throw new Error('header row missing in tab ' + sh.getName());
   if (rows[0].length < liveCol || !String(rows[0][liveCol - 1] || '').trim()) updateBlock_(sh, 1, liveCol, [liveHdr]);
+  if (extra && (rows[0].length < extra.col || !String(rows[0][extra.col - 1] || '').trim())) updateBlock_(sh, 1, extra.col, [[extra.hdr]]);
   const pos = {};
-  for (let i = 1; i < rows.length; i++) { const id = String(rows[i][0] || '').trim(); if (id) pos[id] = i + 1; }
+  for (let i = 1; i < rows.length; i++) { const id = nid_(rows[i][0]); if (id && !(id in pos)) pos[id] = i + 1; }   // first occurrence wins
   const byId = {};
   fresh.forEach(r => byId[r.TICKET_ID] = r);
   const nr = nextRow_(rows);
@@ -383,7 +389,7 @@ function sync_(sh, fresh, fixedVals, liveVals, liveCol, liveHdr) {
     const block = [];
     for (let i = 2; i < nr; i++) {
       const row = rows[i - 1] || [];
-      const id = String(row[0] || '').trim();
+      const id = nid_(row[0]);
       const old = [];
       for (let k = 0; k < liveHdr.length; k++) old.push(row[liveCol - 1 + k] === undefined ? '' : String(row[liveCol - 1 + k]));
       block.push(byId[id] ? liveVals(byId[id], old) : old);
@@ -406,6 +412,7 @@ function sync_(sh, fresh, fixedVals, liveVals, liveCol, liveHdr) {
   if (fresh2.length) {
     updateBlock_(sh, nr, 1, fresh2.map(fixedVals));
     updateBlock_(sh, nr, liveCol, fresh2.map(r => liveVals(r, liveHdr.map(() => ''))));
+    if (extra) updateBlock_(sh, nr, extra.col, fresh2.map(() => [extra.val]));
   }
   SpreadsheetApp.flush();   // surface any write error (e.g. validation) inside this run
   return fresh2.length;

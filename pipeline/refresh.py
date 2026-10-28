@@ -29,6 +29,7 @@ MODEL = "9f70571979"  # model prefix hard-coded in the SQL
 CALLER_FIXED = ["TICKET_ID", "KAPTURE_TICKET_ID", "CSP_ID", "CSP_NAME", "FLAGGED_AT_IST", "SCORE_BAND"]
 CALLER_LIVE_HDR = ["status_now", "issue", "last_refreshed"]
 CALLER_LIVE_COL = 17  # Q
+CALLER_ADDED_COL = 20  # T: added_at, written once when the ticket is first added to the sheet
 
 REG_HDR = ["ticket_id", "kapture_ticket_id", "csp_id", "csp_name", "arm", "score_band", "delay_score",
            "model", "created_at_ist", "flagged_at_ist", "enrolled_at", "status_now", "status_updated_at", "issue"]
@@ -55,7 +56,7 @@ def load_cfg():
     else:
         env = (ROOT / "metabase.env").read_text(encoding="utf-8").splitlines()
         cfg["mb_url"] = env[0].strip().rstrip("/")
-        cfg["mb_key"] = next(l.split(":", 1)[1].strip() for l in env if l.startswith("key:"))
+        cfg["mb_key"] = next(l.split(":", 1)[1].strip() for l in reversed(env) if l.startswith(("key:", "key_secret:")))
     return cfg
 
 
@@ -167,6 +168,11 @@ def open_tab(cfg, which):
     return XTab(c["xlsx"], c["tab"])
 
 
+def nid(v):
+    """ticket ids pasted by hand may carry commas/spaces ('1,792,727,978,487,000'): compare digits only"""
+    return re.sub(r"\D", "", str(v))
+
+
 def next_row(rows):
     n = 1
     for i, r in enumerate(rows, 1):
@@ -175,19 +181,25 @@ def next_row(rows):
     return n + 1
 
 
-def sync(tab, fresh, fixed_vals, live_vals, live_col, live_hdr):
+def sync(tab, fresh, fixed_vals, live_vals, live_col, live_hdr, extra=None):
     """fresh: rows to hold; fixed_vals(r)->list written once at append;
-    live_vals(r)->list refreshed every run in live_col onward."""
+    live_vals(r)->list refreshed every run in live_col onward.
+    extra=(col, header, value): a write-once column stamped only when a ticket is first appended."""
     rows = tab.read_all()
     if not rows or not rows[0] or rows[0][0] == "":
         raise RuntimeError("header row missing in sheet")
     if len(rows[0]) < live_col or not rows[0][live_col - 1].strip():
         tab.update_block(1, live_col, [live_hdr])
-    pos = {r[0]: i for i, r in enumerate(rows, 1) if i > 1 and r and r[0].strip()}
+    if extra and (len(rows[0]) < extra[0] or not rows[0][extra[0] - 1].strip()):
+        tab.update_block(1, extra[0], [[extra[1]]])
+    pos = {}
+    for i, r in enumerate(rows, 1):  # first occurrence wins if a ticket appears twice
+        if i > 1 and r and r[0].strip():
+            pos.setdefault(nid(r[0]), i)
     byid = {r["TICKET_ID"]: r for r in fresh}
 
     # 1) refresh live columns of rows already on the sheet (in place)
-    ids = [rows[i - 1][0] if i - 1 < len(rows) else "" for i in range(2, next_row(rows))]
+    ids = [nid(rows[i - 1][0]) if i - 1 < len(rows) else "" for i in range(2, next_row(rows))]
     if ids:
         old = []
         for i in range(2, next_row(rows)):
@@ -213,14 +225,16 @@ def sync(tab, fresh, fixed_vals, live_vals, live_col, live_hdr):
         start = next_row(rows)
         tab.update_block(start, 1, [fixed_vals(r) for r in new])
         tab.update_block(start, live_col, [live_vals(r, [""] * len(live_hdr)) for r in new])
+        if extra:
+            tab.update_block(start, extra[0], [[extra[2]] for _ in new])
     return len(new)
 
 
 def main():
     cfg = load_cfg()
-    h = datetime.now(IST).hour
-    if os.environ.get("ENFORCE_HOURS") and not (11 <= h <= 21):
-        log("outside 11:00-21:00 IST, skipping")
+    t = datetime.now(IST)
+    if os.environ.get("ENFORCE_HOURS") and not (600 <= t.hour * 60 + t.minute <= 1170):
+        log("outside 10:00-19:30 IST, skipping")
         return
     if "--check" in sys.argv:  # connectivity test: opens both tabs, writes nothing
         for which in ("caller", "register"):
@@ -235,7 +249,8 @@ def main():
     calls = [r for r in rows if r["ARM"] == "CALL"]
     n1 = sync(open_tab(cfg, "caller"), calls,
               lambda r: [r[k] for k in CALLER_FIXED],
-              lambda r, old: [r["STATUS_NOW"], r["ISSUE"], now], CALLER_LIVE_COL, CALLER_LIVE_HDR)
+              lambda r, old: [r["STATUS_NOW"], r["ISSUE"], now], CALLER_LIVE_COL, CALLER_LIVE_HDR,
+              extra=(CALLER_ADDED_COL, "added_at", now))
 
     def reg_fixed(r):
         return [r["TICKET_ID"], r["KAPTURE_TICKET_ID"], r["CSP_ID"], r["CSP_NAME"], r["ARM"], r["SCORE_BAND"],

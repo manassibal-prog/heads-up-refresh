@@ -15,7 +15,7 @@ only for regenerating Code.gs if Adit's SQL ever changes. Do not share Code.gs o
    screen: Advanced -> Go to Heads-up refresh). Then open **Execution log**: expect
    `OK: N flagged, M CALL, in Xs`. If X is over ~50, tell Claude (Google limits a web request to about 60s).
 6. Choose function **refresh** -> Run once. Check the caller sheet fills in and `last_refreshed` is current.
-7. Choose function **installTrigger** -> Run. This makes `refresh()` run every 30 minutes, acting only 11:00-21:59 IST.
+7. Choose function **installTrigger** -> Run. This makes `refresh()` run every 30 minutes, acting only 10:00-19:30 IST.
 8. Tell Claude. The laptop task and the GitHub schedule are then switched off so only one runner writes.
 
 ## Day to day
