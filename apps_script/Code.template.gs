@@ -10,7 +10,7 @@
  * Setup: see README.md. Needs the script property MB_KEY (Metabase API key).
  */
 const CFG = {
-  START_DATE: '2026-10-20',
+  START_DATE: '2026-11-03',
   MB_URL: 'https://metabase.wiom.in',
   DB_ID: 113,
   CALLER: { id: '1BkM2RdVOJ9ZGTXMNbFvRsuc1SnnZligtJy1S8_k2dqQ', tab: 'Call log' },

@@ -22,3 +22,9 @@ only for regenerating Code.gs if Adit's SQL ever changes. Do not share Code.gs o
 - Every run writes one line to the `Run log` tab of the DS register sheet. A failed run or a 0-row run also emails the owner (max 1/hour).
 - If the Metabase key is rotated, update the `MB_KEY` script property.
 - The project's Triggers page (clock icon) shows the schedule and any failed executions.
+
+## Query version history
+- v1 (20 Oct - 2 Nov 2026): 144 excluded CSPs, 50/50 split. Kept as `pipeline/heads_up_call_list_v1.sql`.
+- v2 (from 3 Nov 2026): 60 excluded CSPs (risk-funnel CSPs back in), 85% CALL / 15% NO CALL. Live file: `pipeline/heads_up_call_list.sql`.
+  `CFG.START_DATE` in Code.gs must stay `2026-11-03`: the script overrides the query's start_date line with it.
+  After editing the SQL, run `python apps_script/build.py` and paste the new Code.gs into the Apps Script project.
